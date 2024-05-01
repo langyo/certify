@@ -89,7 +89,6 @@ namespace Certify.Providers.ACME.Anvil
 
         private ACMECompatibilityMode _compatibilityMode = ACMECompatibilityMode.Standard;
 
-      
         /// <summary>
         /// Standard ms to wait before attempting to check for an attempted challenge to be validated etc (e.g. an HTTP check or DNS lookup)
         /// </summary>
@@ -1584,7 +1583,7 @@ namespace Certify.Providers.ACME.Anvil
             {
                 if (DefaultCertificateFormat == "pfx" || DefaultCertificateFormat == "all")
                 {
-                    primaryCertOutputFile = ExportFullCertPFX(certFriendlyName, pwd, csrKey, certificateChain, certId, domainAsPath, includeCleanup: true, useModernKeyAlgorithms: useModernPFXBuildAlgs);
+                    primaryCertOutputFile = ExportFullCertPFX(certFriendlyName, pwd, csrKey, certificateChain, certId, domainAsPath, includeCleanup: true, useModernKeyAlgorithms: useModernPFXBuildAlgs, itemLog: log);
                 }
             }
             catch (Exception ex)
@@ -1856,7 +1855,7 @@ namespace Certify.Providers.ACME.Anvil
             }
         }
 
-        private string ExportFullCertPFX(string certFriendlyName, string pwd, IKey csrKey, CertificateChain certificateChain, string certId, string primaryDomainPath, bool includeCleanup = true, bool useModernKeyAlgorithms = false)
+        private string ExportFullCertPFX(string certFriendlyName, string pwd, IKey csrKey, CertificateChain certificateChain, string certId, string primaryDomainPath, bool includeCleanup = true, bool useModernKeyAlgorithms = false, ILog itemLog = null)
         {
             var storePath = Path.GetFullPath(Path.Combine(new string[] { _providerSettings.ServiceSettingsBasePath, "assets", primaryDomainPath }));
 
@@ -1918,12 +1917,11 @@ namespace Certify.Providers.ACME.Anvil
                 var pfx = certificateChain.ToPfx(csrKey);
 
                 // attempt to build pfx cert chain using known issuers and known roots, if this fails it throws an AcmeException
-                pfxBytes = pfx.Build(certFriendlyName, pwd, useLegacyKeyAlgorithms: !useModernKeyAlgorithms, allowBuildWithoutKnownRoot: _providerSettings.AllowUnknownCARoots);
+                pfxBytes = pfx.Build(certFriendlyName, pwd, useLegacyKeyAlgorithms: !useModernKeyAlgorithms, skipChainBuild: false);
                 File.WriteAllBytes(pfxPath, pfxBytes);
             }
             catch (Exception)
             {
-
                 // if build failed, try refreshing issuer certs and rebuild
                 RefreshIssuerCertCache();
 
@@ -1939,12 +1937,22 @@ namespace Certify.Providers.ACME.Anvil
 
                 try
                 {
-                    pfxBytes = pfx.Build(certFriendlyName, pwd, useLegacyKeyAlgorithms: !useModernKeyAlgorithms, allowBuildWithoutKnownRoot: _providerSettings.AllowUnknownCARoots);
+                    pfxBytes = pfx.Build(certFriendlyName, pwd, useLegacyKeyAlgorithms: !useModernKeyAlgorithms, skipChainBuild: false);
                     File.WriteAllBytes(pfxPath, pfxBytes);
                 }
-                catch (Exception ex)
+                catch (Exception buildExp)
                 {
-                    throw new Exception($"{failedBuildMsg} {ex.Message}");
+                    itemLog?.Warning("Failed to build PFX using full chain, build will be attempted using end entity only: {exp}", buildExp.Message);
+
+                    try
+                    {
+                        pfxBytes = pfx.Build(certFriendlyName, pwd, useLegacyKeyAlgorithms: !useModernKeyAlgorithms, skipChainBuild: true);
+                        File.WriteAllBytes(pfxPath, pfxBytes);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"{failedBuildMsg} {ex.Message}");
+                    }
                 }
             }
 
