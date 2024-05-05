@@ -304,6 +304,12 @@ namespace Certify.UI.ViewModel
         /// <returns></returns>
         public async Task<ManagedCertificate> UpdatedCachedManagedCertificate(ManagedCertificate managedCertificate, bool reload = false)
         {
+            if (managedCertificate.ItemType == ManagedCertificateType.SSL_ExternallyManaged)
+            {
+                // external managed cert, do not update cache
+                return managedCertificate;
+            }
+
             await _managedCertCacheSemaphore.WaitAsync();
 
             try
@@ -503,7 +509,7 @@ namespace Certify.UI.ViewModel
         /// </summary>
         /// <param name="isPreviewOnly"></param>
         /// <returns></returns>
-        internal async Task<List<CertificateRequestResult>> RedeployManagedCertificatess(bool isPreviewOnly, bool includeDeploymentTasks)
+        internal async Task<List<CertificateRequestResult>> RedeployManagedCertificates(bool isPreviewOnly, bool includeDeploymentTasks)
         {
             return await _certifyClient.RedeployManagedCertificates(isPreviewOnly, includeDeploymentTasks);
         }

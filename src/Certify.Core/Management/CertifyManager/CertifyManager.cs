@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -188,9 +188,9 @@ namespace Certify.Management
 
             SetupJobs();
 
-            _serviceLog?.Information("Certify Manager Started");
-
             await UpgradeSettings();
+
+            _serviceLog?.Information("Certify Manager Started");
         }
 
         /// <summary>
@@ -328,8 +328,7 @@ namespace Certify.Management
             _serviceLog = new Loggy(
                 new LoggerConfiguration()
                .MinimumLevel.ControlledBy(_loggingLevelSwitch)
-               .WriteTo.Debug()
-               .WriteTo.File(Path.Combine(EnvironmentUtil.GetAppDataFolder("logs"), "session.log"), shared: true, flushToDiskInterval: new TimeSpan(0, 0, 10), rollOnFileSizeLimit: true, fileSizeLimitBytes: 5 * 1024 * 1024)
+               .WriteTo.File(Path.Combine(EnvironmentUtil.CreateAppDataPath("logs"), "session.log"), shared: true, flushToDiskInterval: new TimeSpan(0, 0, 10), rollOnFileSizeLimit: true, fileSizeLimitBytes: 5 * 1024 * 1024)
                .CreateLogger()
                );
 
@@ -437,9 +436,9 @@ namespace Certify.Management
         /// <param name="storageKey"></param>
         /// <param name="acmeApiEndpoint"></param>
         /// <param name="account"></param>
-        /// <param name="allowUntrustedTsl"></param>
+        /// <param name="allowUntrustedTls"></param>
         /// <returns></returns>
-        private async Task<IACMEClientProvider> GetACMEProvider(string storageKey, string acmeApiEndpoint = null, AccountDetails account = null, bool allowUntrustedTsl = false)
+        private async Task<IACMEClientProvider> GetACMEProvider(string storageKey, string acmeApiEndpoint = null, AccountDetails account = null, bool allowUntrustedTls = false)
         {
             // get or init acme provider required for the given account
             if (_acmeClientProviders.TryGetValue(storageKey, out var provider))
@@ -449,10 +448,19 @@ namespace Certify.Management
             else
             {
                 var userAgent = Util.GetUserAgent();
-                var settingBaseFolder = EnvironmentUtil.GetAppDataFolder();
+                var settingBaseFolder = EnvironmentUtil.CreateAppDataPath();
                 var providerPath = Path.Combine(settingBaseFolder, "certes_" + storageKey);
 
-                var newProvider = new AnvilACMEProvider(acmeApiEndpoint, settingBaseFolder, providerPath, userAgent, allowUntrustedTsl);
+                var newProvider = new AnvilACMEProvider(new AnvilACMEProviderSettings
+                {
+                    AcmeBaseUri = acmeApiEndpoint,
+                    ServiceSettingsBasePath = settingBaseFolder,
+                    LegacySettingsPath = providerPath,
+                    UserAgentName = userAgent,
+                    AllowUntrustedTls = allowUntrustedTls,
+                    DefaultACMERetryIntervalSeconds = CoreAppSettings.Current.DefaultACMERetryInterval,
+                    EnableIssuerCache = CoreAppSettings.Current.EnableIssuerCache
+                });
 
                 if (!_useWindowsNativeFeatures)
                 {
@@ -542,7 +550,7 @@ namespace Certify.Management
         private void Cleanup()
         {
             ManagedCertificateLog.DisposeLoggers();
-            if(_tc != null)
+            if (_tc != null)
             {
                 _tc.Dispose();
             }
@@ -620,7 +628,7 @@ namespace Certify.Management
 
             if (type == "session")
             {
-                logPath = Path.Combine(EnvironmentUtil.GetAppDataFolder("logs"), "session.log");
+                logPath = Path.Combine(EnvironmentUtil.CreateAppDataPath("logs"), "session.log");
             }
 
             if (logPath != null && System.IO.File.Exists(logPath))
@@ -659,6 +667,7 @@ namespace Certify.Management
             }
             else if (!CoreAppSettings.Current.EnableAppTelematics && _tc != null)
             {
+                _tc?.Dispose();
                 _tc = null;
             }
 

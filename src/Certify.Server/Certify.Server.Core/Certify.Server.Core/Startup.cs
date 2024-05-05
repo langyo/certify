@@ -1,10 +1,7 @@
-﻿using System.Collections.Generic;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
+using System.Text;
+using Certify.Management;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.OpenApi.Models;
 
 namespace Certify.Server.Core
@@ -27,6 +24,15 @@ namespace Certify.Server.Core
                 .AddSignalR()
                 .AddMessagePackProtocol();
 
+            services.AddDataProtection(a =>
+            {
+                a.ApplicationDiscriminator = "certify";
+            });
+            services.AddResponseCompression(opts =>
+            {
+                opts.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(new[] { "application/octet-stream", "application/json" });
+            });
+
             services.AddCors(options =>
             {
                 options.AddDefaultPolicy(
@@ -39,6 +45,8 @@ namespace Certify.Server.Core
             });
 
 #if DEBUG
+            services.AddEndpointsApiExplorer();
+
             // Register the Swagger generator, defining 1 or more Swagger documents
             // https://docs.microsoft.com/en-us/aspnet/core/tutorials/getting-started-with-swashbuckle?view=aspnetcore-3.1&tabs=visual-studio
             services.AddSwaggerGen(c =>
@@ -81,7 +89,6 @@ namespace Certify.Server.Core
 #endif
 
             // inject instance of certify manager
-
             var certifyManager = new Management.CertifyManager();
             certifyManager.Init().Wait();
 
@@ -100,8 +107,21 @@ namespace Certify.Server.Core
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
-        public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IHubContext<Service.StatusHub> statusHubContext, Management.ICertifyManager certifyManager)
+        public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
+            var statusHubContext = app.ApplicationServices.GetRequiredService<IHubContext<Service.StatusHub>>();
+            if (statusHubContext == null)
+            {
+                throw new Exception("Status Hub not registered");
+            }
+
+            var certifyManager = app.ApplicationServices.GetRequiredService(typeof(ICertifyManager)) as CertifyManager;
+
+            if (certifyManager == null)
+            {
+                throw new Exception("Certify Manager not registered");
+            }
+
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
@@ -122,7 +142,6 @@ namespace Certify.Server.Core
             // set status report context provider
             certifyManager.SetStatusReporting(new Service.StatusHubReporting(statusHubContext));
 
-            //
             var useHttps = bool.Parse(Configuration["API:Service:UseHttps"]);
 
             if (useHttps)
@@ -141,8 +160,23 @@ namespace Certify.Server.Core
                 endpoints.MapHub<Service.StatusHub>("/api/status");
                 endpoints.MapControllers();
 
-            });
+#if DEBUG
+                endpoints.MapGet("/debug/routes", (IEnumerable<EndpointDataSource> endpointSources) =>
+                {
+                    var sb = new StringBuilder();
+                    var endpoints = endpointSources.SelectMany(es => es.Endpoints);
+                    foreach (var endpoint in endpoints)
+                    {
+                        if (endpoint is RouteEndpoint routeEndpoint)
+                        {
+                            sb.AppendLine($"{routeEndpoint.DisplayName} {routeEndpoint.RoutePattern.RawText}");
+                        }
+                    }
 
+                    return sb.ToString();
+                });
+#endif
+            });
         }
     }
 }

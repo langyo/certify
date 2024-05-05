@@ -1,4 +1,5 @@
-﻿using System;
+using System;
+using System.IO;
 using System.Threading.Tasks;
 using Certify.Models;
 using Certify.Shared;
@@ -56,6 +57,13 @@ namespace Certify.Client
                 _legacyConnection.Reconnected += OnConnectionReconnected;
                 _legacyConnection.Closed += OnConnectionClosed;
 
+#if DEBUG
+                var logPath = Path.Combine(EnvironmentUtil.CreateAppDataPath("logs"), "hubconnection.log");
+                var writer = new StreamWriter(logPath);
+                writer.AutoFlush = true;
+                _legacyConnection.TraceLevel = TraceLevels.All;
+                _legacyConnection.TraceWriter = writer;
+#endif
                 await _legacyConnection.Start();
 
             }
@@ -88,12 +96,6 @@ namespace Certify.Client
                 .AddMessagePackProtocol()
                 .Build();
 
-                connection.Closed += async (error) =>
-                {
-                    await Task.Delay(new Random().Next(0, 5) * 1000);
-                    await connection.StartAsync();
-                };
-
                 connection.On<RequestProgressState>(Providers.StatusHubMessages.SendProgressStateMsg, (s) =>
                 {
                     OnRequestProgressStateUpdated?.Invoke(s);
@@ -110,6 +112,12 @@ namespace Certify.Client
                 });
 
                 await connection.StartAsync();
+
+                connection.Closed += async (error) =>
+                {
+                    await Task.Delay(new Random().Next(0, 5) * 1000);
+                    await connection.StartAsync();
+                };
             }
         }
 
@@ -146,6 +154,11 @@ namespace Certify.Client
         public ServerConnection GetConnectionInfo()
         {
             return _connectionConfig;
+        }
+
+        public string GetStatusHubUri()
+        {
+            return _statusHubUri;
         }
     }
 }

@@ -1,10 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using Certify.Core.Management.Access;
-using Certify.Management;
+﻿using Certify.Management;
+using Certify.Models.API;
 using Certify.Models.Config.AccessControl;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Certify.Service.Controllers
@@ -14,87 +11,73 @@ namespace Certify.Service.Controllers
     public class AccessController : ControllerBase
     {
         private ICertifyManager _certifyManager;
+        private IDataProtectionProvider _dataProtectionProvider;
+
+        public AccessController(ICertifyManager certifyManager, IDataProtectionProvider dataProtectionProvider)
+        {
+            _certifyManager = certifyManager;
+            _dataProtectionProvider = dataProtectionProvider;
+        }
 
         private string GetContextUserId()
         {
             // TODO: sign passed value provided by public API using public APIs access token
             var contextUserId = Request.Headers["X-Context-User-Id"];
 
-#if DEBUG
-            if (string.IsNullOrEmpty(contextUserId))
-            {
-                // TODO: our context user has to at least come from a valid JWT claim
-                contextUserId = "admin_01";
-            }
-#endif
             return contextUserId;
         }
 
-        public AccessController(ICertifyManager certifyManager)
+        [HttpPost, Route("securityprinciple")]
+        public async Task<Models.Config.ActionResult> AddSecurityPrinciple([FromBody] SecurityPrinciple principle)
         {
-            _certifyManager = certifyManager;
+            var accessControl = await _certifyManager.GetCurrentAccessControl();
+            var addResultOk = await accessControl.AddSecurityPrinciple(GetContextUserId(), principle);
+
+            return new Models.Config.ActionResult
+            {
+                IsSuccess = addResultOk,
+                Message = addResultOk ? "Added" : "Failed to add"
+            };
         }
 
-#if DEBUG
-        private async Task BootstrapTestAdminUserAndRoles(IAccessControl access)
+        [HttpPost, Route("securityprinciple/update")]
+        public async Task<Models.Config.ActionResult> UpdateSecurityPrinciple([FromBody] SecurityPrinciple principle)
         {
+            var accessControl = await _certifyManager.GetCurrentAccessControl();
+            var addResultOk = await accessControl.UpdateSecurityPrinciple(GetContextUserId(), principle);
 
-            var adminSp = new SecurityPrinciple
+            return new Models.Config.ActionResult
             {
-                Id = "admin_01",
-                Email = "admin@test.com",
-                Description = "Primary test admin",
-                PrincipleType = SecurityPrincipleType.User,
-                Username = "admin",
-                Provider = StandardProviders.INTERNAL
+                IsSuccess = addResultOk,
+                Message = addResultOk ? "Updated" : "Failed to update"
             };
-
-            await access.AddSecurityPrinciple(adminSp.Id, adminSp, bypassIntegrityCheck: true);
-
-            var actions = Policies.GetStandardResourceActions();
-
-            foreach (var action in actions)
-            {
-                await access.AddAction(action);
-            }
-
-            // setup policies with actions
-
-            var policies = Policies.GetStandardPolicies();
-
-            // add policies to store
-            foreach (var r in policies)
-            {
-                _ = await access.AddResourcePolicy(adminSp.Id, r, bypassIntegrityCheck: true);
-            }
-
-            // setup roles with policies
-            var roles = await access.GetSystemRoles();
-
-            foreach (var r in roles)
-            {
-                // add roles and policy assignments to store
-                await access.AddRole(r);
-            }
-
-            // assign security principles to roles
-            var assignedRoles = new List<AssignedRole> {
-                 // administrator
-                 new AssignedRole{
-                     Id= Guid.NewGuid().ToString(),
-                     RoleId=StandardRoles.Administrator.Id,
-                     SecurityPrincipleId=adminSp.Id
-                 }
-            };
-
-            foreach (var r in assignedRoles)
-            {
-                // add roles and policy assignments to store
-                await access.AddAssignedRole(r);
-            }
         }
 
-#endif
+        [HttpPost, Route("securityprinciple/roles/update")]
+        public async Task<Models.Config.ActionResult> UpdateSecurityPrincipleAssignedRoles([FromBody] SecurityPrincipleAssignedRoleUpdate update)
+        {
+            var accessControl = await _certifyManager.GetCurrentAccessControl();
+            var resultOk = await accessControl.UpdateAssignedRoles(GetContextUserId(), update);
+
+            return new Models.Config.ActionResult
+            {
+                IsSuccess = resultOk,
+                Message = resultOk ? "Updated" : "Failed to update"
+            };
+        }
+
+        [HttpDelete, Route("securityprinciple/{id}")]
+        public async Task<Models.Config.ActionResult> DeleteSecurityPrinciple(string id)
+        {
+            var accessControl = await _certifyManager.GetCurrentAccessControl();
+            var resultOk = await accessControl.DeleteSecurityPrinciple(GetContextUserId(), id);
+
+            return new Models.Config.ActionResult
+            {
+                IsSuccess = resultOk,
+                Message = resultOk ? "Deleted" : "Failed to delete security principle"
+            };
+        }
 
         [HttpGet, Route("securityprinciples")]
         public async Task<List<SecurityPrinciple>> GetSecurityPrinciples()
@@ -103,14 +86,6 @@ namespace Certify.Service.Controllers
 
             var results = await accessControl.GetSecurityPrinciples(GetContextUserId());
 
-#if DEBUG
-            // bootstrap the default user
-            if (!results.Any())
-            {
-                await BootstrapTestAdminUserAndRoles(accessControl);
-                results = await accessControl.GetSecurityPrinciples(GetContextUserId());
-            }
-#endif
             foreach (var r in results)
             {
                 r.AuthKey = "<sanitized>";
@@ -124,7 +99,7 @@ namespace Certify.Service.Controllers
         public async Task<List<Role>> GetRoles()
         {
             var accessControl = await _certifyManager.GetCurrentAccessControl();
-            var roles = await accessControl.GetSystemRoles();
+            var roles = await accessControl.GetRoles();
             return roles;
         }
 
@@ -138,11 +113,46 @@ namespace Certify.Service.Controllers
             return results;
         }
 
-        [HttpPost, Route("updatepassword")]
-        public async Task<bool> UpdatePassword(string id, string oldpassword, string newpassword)
+        [HttpGet, Route("securityprinciple/{id}/rolestatus")]
+        public async Task<RoleStatus> GetSecurityPrincipleRoleStatus(string id)
         {
             var accessControl = await _certifyManager.GetCurrentAccessControl();
-            return await accessControl.UpdateSecurityPrinciplePassword(GetContextUserId(), id: id, oldpassword: oldpassword, newpassword: newpassword);
+
+            var result = await accessControl.GetSecurityPrincipleRoleStatus(GetContextUserId(), id);
+
+            return result;
+        }
+
+        [HttpPost, Route("updatepassword")]
+        public async Task<Models.Config.ActionResult> UpdatePassword([FromBody] SecurityPrinciplePasswordUpdate passwordUpdate)
+        {
+            var accessControl = await _certifyManager.GetCurrentAccessControl();
+            var result = await accessControl.UpdateSecurityPrinciplePassword(GetContextUserId(), passwordUpdate);
+
+            return new Models.Config.ActionResult
+            {
+                IsSuccess = result,
+                Message = result ? "Updated" : "Failed to update"
+            };
+        }
+
+        [HttpPost, Route("validate")]
+        public async Task<SecurityPrincipleCheckResponse> Validate([FromBody] SecurityPrinciplePasswordCheck passwordCheck)
+        {
+            var accessControl = await _certifyManager.GetCurrentAccessControl();
+            var result = await accessControl.CheckSecurityPrinciplePassword(GetContextUserId(), passwordCheck);
+
+            return result;
+        }
+
+        [HttpPost, Route("serviceauth")]
+        public async Task<Models.Config.ActionResult> ValidateServiceAuth()
+        {
+            var protector = _dataProtectionProvider.CreateProtector("serviceauth");
+
+            protector.Unprotect(Request.Headers["X-Service-Auth"]);
+
+            return new Models.Config.ActionResult();
         }
     }
 }

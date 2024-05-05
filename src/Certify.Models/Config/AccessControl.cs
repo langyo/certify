@@ -38,12 +38,14 @@ namespace Certify.Models.Config.AccessControl
         public SecurityPrincipleType? PrincipleType { get; set; }
 
         public string? AuthKey { get; set; }
+
+        public string AvatarUrl { get; set; } = string.Empty;
     }
 
     public class Role : AccessStoreItem
     {
         public List<string> Policies { get; set; } = new List<string>();
-        public Role(string id, string title, string description, List<string> policies = null)
+        public Role(string id, string title, string description, List<string>? policies = null)
         {
             Id = id;
             Title = title;
@@ -71,7 +73,7 @@ namespace Certify.Models.Config.AccessControl
         /// </summary>
         public string? SecurityPrincipleId { get; set; }
 
-        public List<Resource> IncludedResources { get; set; }
+        public List<Resource>? IncludedResources { get; set; }
     }
 
     /// <summary>
@@ -122,5 +124,19 @@ namespace Certify.Models.Config.AccessControl
         }
 
         public string? ResourceType { get; set; }
+    }
+    public class SecurityPrincipleAssignedRoleUpdate
+    {
+        public string SecurityPrincipleId { get; set; } = string.Empty;
+        public List<AssignedRole> AddedAssignedRoles { get; set; } = new List<AssignedRole>();
+        public List<AssignedRole> RemovedAssignedRoles { get; set; } = new List<AssignedRole>();
+    }
+
+    public class RoleStatus
+    {
+        public IEnumerable<AssignedRole> AssignedRoles { get; set; } = new List<AssignedRole>();
+        public IEnumerable<Role> Roles { get; set; } = new List<Role>();
+        public IEnumerable<ResourcePolicy> Policies { get; set; } = new List<ResourcePolicy>();
+        public IEnumerable<ResourceAction> Action { get; set; } = new List<ResourceAction>();
     }
 }

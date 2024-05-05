@@ -15,6 +15,8 @@ using Serilog;
 
 namespace Certify.Core.Tests
 {
+
+#pragma warning disable CS0618 // Type or member is obsolete
     [TestClass]
     /// <summary>
     /// Integration tests for CertifyManager
@@ -612,7 +614,7 @@ namespace Certify.Core.Tests
         }
 
         [TestMethod]
-        public async Task TestRequestTnAuthCSR()
+        public void TestRequestTnAuthCSR()
         {
             var pemKey = ConfigSettings["TestAuthTokenPrivateKey"];
 
@@ -635,9 +637,16 @@ namespace Certify.Core.Tests
         {
 
             var apiEndpoint = ConfigSettings["TestAuthTokenEndpoint"];
-            var settingBaseFolder = EnvironmentUtil.GetAppDataFolder();
+            var settingBaseFolder = EnvironmentUtil.CreateAppDataPath();
             var providerPath = System.IO.Path.Combine(settingBaseFolder, "certes");
-            var provider = new AnvilACMEProvider(apiEndpoint, settingBaseFolder, providerPath, Certify.Management.Util.GetUserAgent());
+            var provider = new AnvilACMEProvider(new AnvilACMEProviderSettings
+            {
+                AcmeBaseUri = apiEndpoint,
+                ServiceSettingsBasePath = settingBaseFolder,
+                LegacySettingsPath = providerPath,
+                UserAgentName = Certify.Management.Util.GetUserAgent()
+            });
+
             var account = new AccountDetails
             {
                 AccountKey = ConfigSettings["TestAuthTokenPrivateKey"],
@@ -688,7 +697,7 @@ namespace Certify.Core.Tests
             var managedCertificates = await certifyManager.GetManagedCertificates(new ManagedCertificateFilter { Id = dummyManagedCertificate.Id });
             var managedCertificate = managedCertificates.FirstOrDefault(m => m.Id == dummyManagedCertificate.Id);
 
-            //emsure we have a new managed site
+            //ensure we have a new managed site
             Assert.IsNotNull(managedCertificate);
 
             //have cert file details
@@ -714,4 +723,5 @@ namespace Certify.Core.Tests
             CertificateManager.RemoveCertificate(certInfo);
         }
     }
+#pragma warning restore CS0618 // Type or member is obsolete
 }

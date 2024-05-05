@@ -8,7 +8,7 @@ namespace Certify.Server.Api.Public.Controllers
     /// </summary>
     [ApiController]
     [Route("api/v1/[controller]")]
-    public partial class SystemController : ControllerBase
+    public partial class SystemController : ApiControllerBase
     {
 
         private readonly ILogger<SystemController> _logger;
@@ -32,12 +32,12 @@ namespace Certify.Server.Api.Public.Controllers
         /// <returns></returns>
         [HttpGet]
         [Route("version")]
+        [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(Version))]
         public async Task<IActionResult> GetSystemVersion()
         {
-
             var versionInfo = await _client.GetAppVersion();
 
-            return new OkObjectResult(versionInfo);
+            return new OkObjectResult(Version.Parse(versionInfo));
         }
 
         /// <summary>
@@ -46,6 +46,7 @@ namespace Certify.Server.Api.Public.Controllers
         /// <returns></returns>
         [HttpGet]
         [Route("health")]
+        [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(object))]
         public async Task<IActionResult> GetHealth()
         {
             var serviceAvailable = false;
@@ -57,9 +58,11 @@ namespace Certify.Server.Api.Public.Controllers
             }
             catch { }
 
-            var env = Environment.GetEnvironmentVariables();
-
-            var health = new { API = "OK", Service = versionInfo, ServiceAvailable = serviceAvailable, env = env };
+#if DEBUG
+            var health = new { API = "OK", Service = versionInfo, ServiceAvailable = serviceAvailable, env = Environment.GetEnvironmentVariables() };
+#else
+            var health = new { API = "OK", Service = versionInfo, ServiceAvailable = serviceAvailable};
+#endif
 
             return new OkObjectResult(health);
         }

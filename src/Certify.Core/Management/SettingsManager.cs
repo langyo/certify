@@ -172,6 +172,13 @@ namespace Certify.Management
         public bool EnableParallelRenewals { get; set; }
 
         /// <summary>
+        /// If set, customizes the ACME retry interval for operations such as polling order status where Retry After not supported by CA
+        /// </summary>
+        public int DefaultACMERetryInterval { get; set; }
+
+        public bool EnableIssuerCache { get; set; }
+
+        /// <summary>
         /// If true, challenge cleanup will only happen after all auth challenges in an order have been processed
         /// </summary>
         public bool PerformChallengeCleanupsLast { get; set; }
@@ -229,6 +236,10 @@ namespace Certify.Management
             CoreAppSettings.Current.DefaultKeyType = prefs.DefaultKeyType;
 
             CoreAppSettings.Current.EnableParallelRenewals = prefs.EnableParallelRenewals;
+
+            CoreAppSettings.Current.DefaultACMERetryInterval = prefs.DefaultACMERetryInterval;
+
+            CoreAppSettings.Current.EnableIssuerCache = prefs.EnableIssuerCache;
             return true;
         }
 
@@ -264,7 +275,8 @@ namespace Certify.Management
                 EnableExternalCertManagers = CoreAppSettings.Current.EnableExternalCertManagers,
                 ConfigDataStoreConnectionId = CoreAppSettings.Current.ConfigDataStoreConnectionId,
                 DefaultKeyType = CoreAppSettings.Current.DefaultKeyType,
-                EnableParallelRenewals = CoreAppSettings.Current.EnableParallelRenewals
+                EnableParallelRenewals = CoreAppSettings.Current.EnableParallelRenewals,
+                DefaultACMERetryInterval = CoreAppSettings.Current.DefaultACMERetryInterval
             };
 
             return prefs;
@@ -272,7 +284,7 @@ namespace Certify.Management
 
         public static void SaveAppSettings()
         {
-            var appDataPath = EnvironmentUtil.GetAppDataFolder();
+            var appDataPath = EnvironmentUtil.CreateAppDataPath();
             var json = Newtonsoft.Json.JsonConvert.SerializeObject(CoreAppSettings.Current, Newtonsoft.Json.Formatting.Indented);
 
             lock (settingsLocker)
@@ -284,7 +296,7 @@ namespace Certify.Management
         public static List<CertificateAuthority> GetCustomCertificateAuthorities()
         {
             var caList = new List<CertificateAuthority>();
-            var appDataPath = EnvironmentUtil.GetAppDataFolder();
+            var appDataPath = EnvironmentUtil.CreateAppDataPath();
             var path = Path.Combine(appDataPath, "ca.json");
 
             if (System.IO.File.Exists(path))
@@ -307,7 +319,7 @@ namespace Certify.Management
         public static bool SaveCustomCertificateAuthorities(List<CertificateAuthority> caList)
         {
 
-            var appDataPath = EnvironmentUtil.GetAppDataFolder();
+            var appDataPath = EnvironmentUtil.CreateAppDataPath();
             var path = Path.Combine(appDataPath, "ca.json");
 
             try
@@ -327,7 +339,7 @@ namespace Certify.Management
         {
             try
             {
-                var appDataPath = EnvironmentUtil.GetAppDataFolder();
+                var appDataPath = EnvironmentUtil.CreateAppDataPath();
                 var path = Path.Combine(appDataPath, COREAPPSETTINGSFILE);
 
                 if (System.IO.File.Exists(path))

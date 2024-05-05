@@ -12,7 +12,7 @@ namespace Certify.Server.Api.Public.Controllers
     /// </summary>
     [ApiController]
     [Route("api/v1/[controller]")]
-    public class CertificateController : ControllerBase
+    public partial class CertificateController : ApiControllerBase
     {
 
         private readonly ILogger<CertificateController> _logger;
@@ -40,7 +40,9 @@ namespace Certify.Server.Api.Public.Controllers
         [HttpGet]
         [Route("{managedCertId}/download/{format?}")]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        public async Task<IActionResult> Download(string managedCertId, string format, string mode)
+
+        [ProducesResponseType(typeof(FileContentResult), 200)]
+        public async Task<IActionResult> Download(string managedCertId, string format, string? mode = null)
         {
             if (format == null)
             {
@@ -53,9 +55,9 @@ namespace Certify.Server.Api.Public.Controllers
             }
 
             // TODO: certify manager to do all the cert conversion work, server may be on another machine
-            var managedCert = await _client.GetManagedCertificate(managedCertId);
+            var managedCert = await _client.GetManagedCertificate(managedCertId, CurrentAuthContext);
 
-            if (managedCert == null)
+            if (managedCert?.CertificatePath == null)
             {
                 return new NotFoundResult();
             }
@@ -78,7 +80,7 @@ namespace Certify.Server.Api.Public.Controllers
         [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(LogResult))]
         public async Task<IActionResult> DownloadLog(string managedCertId, int maxLines = 1000)
         {
-            var managedCert = await _client.GetManagedCertificate(managedCertId);
+            var managedCert = await _client.GetManagedCertificate(managedCertId, CurrentAuthContext);
 
             if (managedCert == null)
             {
@@ -90,7 +92,7 @@ namespace Certify.Server.Api.Public.Controllers
                 maxLines = 1000;
             }
 
-            var log = await _client.GetItemLog(managedCertId, maxLines);
+            var log = await _client.GetItemLog(managedCertId, maxLines, CurrentAuthContext);
 
             return new OkObjectResult(new LogResult { Items = log });
         }
@@ -113,7 +115,7 @@ namespace Certify.Server.Api.Public.Controllers
                     Keyword = keyword,
                     PageIndex = page,
                     PageSize = pageSize
-                });
+                }, CurrentAuthContext);
 
             var list = managedCertResult.Results.Select(i => new ManagedCertificateSummary
             {
@@ -155,7 +157,7 @@ namespace Certify.Server.Api.Public.Controllers
                 new Models.ManagedCertificateFilter
                 {
                     Keyword = keyword
-                });
+                }, CurrentAuthContext);
 
             return new OkObjectResult(summary);
         }
@@ -172,7 +174,7 @@ namespace Certify.Server.Api.Public.Controllers
         public async Task<IActionResult> GetManagedCertificateDetails(string managedCertId)
         {
 
-            var managedCert = await _client.GetManagedCertificate(managedCertId);
+            var managedCert = await _client.GetManagedCertificate(managedCertId, CurrentAuthContext);
 
             return new OkObjectResult(managedCert);
         }
@@ -189,7 +191,7 @@ namespace Certify.Server.Api.Public.Controllers
         public async Task<IActionResult> UpdateManagedCertificateDetails(Models.ManagedCertificate managedCertificate)
         {
 
-            var result = await _client.UpdateManagedCertificate(managedCertificate);
+            var result = await _client.UpdateManagedCertificate(managedCertificate, CurrentAuthContext);
             if (result != null)
             {
                 return new OkObjectResult(result);
@@ -212,7 +214,7 @@ namespace Certify.Server.Api.Public.Controllers
         public async Task<IActionResult> BeginOrder(string id)
         {
 
-            var result = await _client.BeginCertificateRequest(id, true, false);
+            var result = await _client.BeginCertificateRequest(id, true, false, CurrentAuthContext);
             if (result != null)
             {
                 return new OkObjectResult(result);
@@ -235,7 +237,7 @@ namespace Certify.Server.Api.Public.Controllers
         public async Task<IActionResult> PerformRenewal(Models.RenewalSettings settings)
         {
 
-            var results = await _client.BeginAutoRenewal(settings);
+            var results = await _client.BeginAutoRenewal(settings, CurrentAuthContext);
             if (results != null)
             {
                 return new OkObjectResult(results);
@@ -258,7 +260,7 @@ namespace Certify.Server.Api.Public.Controllers
         public async Task<IActionResult> PerformConfigurationTest(Models.ManagedCertificate item)
         {
 
-            var results = await _client.TestChallengeConfiguration(item);
+            var results = await _client.TestChallengeConfiguration(item, CurrentAuthContext);
             if (results != null)
             {
                 return new OkObjectResult(results);

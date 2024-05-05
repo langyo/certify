@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Certify.Core.Management.Access;
-using Certify.Datastore.Postgres;
-using Certify.Datastore.SQLServer;
 using Certify.Management;
 using Certify.Models.Config.AccessControl;
 using Certify.Providers;
@@ -67,7 +65,7 @@ namespace Certify.Core.Tests.DataStores
                 Email = "test@test.com",
                 PrincipleType = SecurityPrincipleType.User,
                 Username = "test",
-                Provider = StandardProviders.INTERNAL
+                Provider = StandardIdentityProviders.INTERNAL
             };
 
             try
@@ -140,7 +138,7 @@ namespace Certify.Core.Tests.DataStores
                 Description = "Primary test admin",
                 PrincipleType = SecurityPrincipleType.User,
                 Username = "admin01",
-                Provider = StandardProviders.INTERNAL
+                Provider = StandardIdentityProviders.INTERNAL
             };
 
             var consumerSp = new SecurityPrinciple
@@ -151,7 +149,7 @@ namespace Certify.Core.Tests.DataStores
                 PrincipleType = SecurityPrincipleType.User,
                 Username = "dev01",
                 Password = "oldpassword",
-                Provider = StandardProviders.INTERNAL
+                Provider = StandardIdentityProviders.INTERNAL
             };
 
             try
@@ -172,7 +170,12 @@ namespace Certify.Core.Tests.DataStores
 
                 Assert.IsTrue(access.IsPasswordValid("oldpassword", consumerSp.Password));
 
-                var updated = await access.UpdateSecurityPrinciplePassword(adminSp.Id, consumerSp.Id, "oldpassword", "newpassword");
+                var updated = await access.UpdateSecurityPrinciplePassword(adminSp.Id, new Models.API.SecurityPrinciplePasswordUpdate
+                {
+                    SecurityPrincipleId = consumerSp.Id,
+                    Password = "oldpassword",
+                    NewPassword = "newpassword"
+                });
 
                 Assert.IsTrue(updated, "SP password should have been updated OK");
 

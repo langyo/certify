@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Threading.Tasks;
+using Certify.Models.API;
 using Certify.Models.Config.AccessControl;
 
 namespace Certify.Core.Management.Access
@@ -16,17 +17,19 @@ namespace Certify.Core.Management.Access
         /// Get the list of standard roles built-in to the system
         /// </summary>
         /// <returns></returns>
-        Task<List<Role>> GetSystemRoles();
+        Task<List<Role>> GetRoles();
         Task<bool> IsAuthorised(string contextUserId, string principleId, string roleId, string resourceType, string actionId, string identifier);
         Task<bool> IsPrincipleInRole(string contextUserId, string id, string roleId);
         Task<List<AssignedRole>> GetAssignedRoles(string contextUserId, string id);
+        Task<RoleStatus> GetSecurityPrincipleRoleStatus(string contextUserId, string id);
         Task<bool> UpdateSecurityPrinciple(string contextUserId, SecurityPrinciple principle);
-        Task<bool> UpdateSecurityPrinciplePassword(string contextUserId, string id, string oldpassword, string newpassword);
+        Task<bool> UpdateAssignedRoles(string contextUserId, SecurityPrincipleAssignedRoleUpdate update);
+        Task<bool> UpdateSecurityPrinciplePassword(string contextUserId, SecurityPrinciplePasswordUpdate passwordUpdate);
+        Task<SecurityPrincipleCheckResponse> CheckSecurityPrinciplePassword(string contextUserId, SecurityPrinciplePasswordCheck passwordCheck);
 
         Task AddRole(Role role);
         Task AddAssignedRole(AssignedRole assignedRole);
-        Task AddAction(ResourceAction action);
-
-
+        Task AddResourceAction(ResourceAction action);
+        Task<bool> IsInitialized();
     }
 }

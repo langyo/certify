@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Certify.Management;
 using Certify.Models;
@@ -125,13 +126,15 @@ namespace Certify.CLI
                             {
                                 // cert in store, check permissions
                                 Console.WriteLine($"Stored cert :: " + storedCert.FriendlyName);
-                                var test = fileCert.PrivateKey.KeyExchangeAlgorithm;
-                                Console.WriteLine(test.ToString());
+                                Console.WriteLine($"Signature Algorithm :: " + storedCert.SignatureAlgorithm.FriendlyName);
 
-                                var access = CertificateManager.GetUserAccessInfoForCertificatePrivateKey(storedCert);
-                                foreach (System.Security.AccessControl.AuthorizationRule a in access.GetAccessRules(true, false, typeof(System.Security.Principal.NTAccount)))
+                                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                                 {
-                                    Console.WriteLine("\t Access: " + a.IdentityReference.Value.ToString());
+                                    var access = CertificateManager.GetUserAccessInfoForCertificatePrivateKey(storedCert);
+                                    foreach (System.Security.AccessControl.AuthorizationRule a in access.GetAccessRules(true, false, typeof(System.Security.Principal.NTAccount)))
+                                    {
+                                        Console.WriteLine("\t Access: " + a.IdentityReference.Value.ToString());
+                                    }
                                 }
                             }
 
@@ -222,7 +225,7 @@ namespace Certify.CLI
         public async Task FindPendingAuthorizations(bool autoFix)
         {
             // scan log files for authz URLs, check status of each
-            var logFolder = EnvironmentUtil.GetAppDataFolder("logs");
+            var logFolder = EnvironmentUtil.CreateAppDataPath("logs");
             var files = System.IO.Directory.GetFiles(logFolder, "log_*.txt");
             var orderUrls = new List<string>();
 
@@ -292,7 +295,7 @@ namespace Certify.CLI
                     var caAccount = await c.GetAccountDetails(dummyManagedCert);
                     var acmeClient = await c.GetACMEProvider(dummyManagedCert, caAccount);
 
-                    var pendingOrder = await acmeClient.BeginCertificateOrder(logger, dummyManagedCert.RequestConfig, url);
+                    var pendingOrder = await acmeClient.BeginCertificateOrder(logger, dummyManagedCert, resumeExistingOrder: true);
 
                     foreach (var auth in pendingOrder.Authorizations)
                     {

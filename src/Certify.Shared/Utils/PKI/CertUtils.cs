@@ -1,8 +1,9 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography.X509Certificates;
-using Org.BouncyCastle.Ocsp;
+using Certify.Management;
+using Org.BouncyCastle.Asn1.X509;
 using Org.BouncyCastle.OpenSsl;
 using Org.BouncyCastle.Pkcs;
 using Org.BouncyCastle.X509;
@@ -116,20 +117,26 @@ namespace Certify.Shared.Core.Utils.PKI
         }
 
         /// <summary>
-        /// For a given PFX, calculate the Base64Url encoded SHA256 CertID based on public key and serial (see OCSP CertID)
+        /// For a given PFX, calculate the Base64Url encoded ARI CertID based on 
+        /// base64url(Authority Key Identifier) + "." + base64url(Serial). 
+        /// See draft-ietf-acme-ari-03
         /// </summary>
-        /// <param name="pfxData"></param>
-        /// <param name="pwd"></param>
-        /// <returns></returns>
-        public static string GetCertIdBase64(byte[] pfxData, string pwd)
+        /// <param name="sourceCert"></param>
+        /// <returns>ARI Certificate ID</returns>
+        public static string GetARICertIdBase64(X509Certificate2 sourceCert)
         {
-            var certPfx = new X509Certificate2(pfxData, pwd);
+            // we use BC for the AKI and Serial because native netfx and dotnet are inconsistent and may returns the serial in reverse
+            var cert = new Org.BouncyCastle.X509.X509CertificateParser().ReadCertificate(sourceCert.GetRawCertData());
 
-            var cert = new Org.BouncyCastle.X509.X509CertificateParser().ReadCertificate(certPfx.GetRawCertData());
+            // https://letsencrypt.org/2024/04/25/guide-to-integrating-ari-into-existing-acme-clients
 
-            var certId = new CertificateID(Org.BouncyCastle.Asn1.Nist.NistObjectIdentifiers.IdSha256.Id, cert, cert.SerialNumber);
+            var certAKI = AuthorityKeyIdentifier.GetInstance(cert.GetExtensionValue(X509Extensions.AuthorityKeyIdentifier).GetOctets());
+            var certAKIbytes = certAKI.GetKeyIdentifier();
 
-            return Certify.Management.Util.ToUrlSafeBase64String(certId.ToAsn1Object().GetDerEncoded());
+            var certSerialBytes = cert.SerialNumber.ToByteArray();
+            var certId = $"{Util.ToUrlSafeBase64String(certAKIbytes)}.{Util.ToUrlSafeBase64String(certSerialBytes)}";
+
+            return certId;
         }
     }
 }

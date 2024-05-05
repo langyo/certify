@@ -1,14 +1,12 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Certify.Models.API;
-using Certify.Server.Api.Public.Controllers;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Certify.Service.Api.Tests
@@ -16,10 +14,13 @@ namespace Certify.Service.Api.Tests
     [TestClass]
     public class APITestBase
     {
-        internal static HttpClient _clientWithAnonymousAccess;
-        internal static HttpClient _clientWithAuthorizedAccess;
+        internal static Certify.API.Public.Client _clientWithAnonymousAccess;
+        internal static HttpClient _httpClientWithAnonymousAccess;
 
-        internal static TestServer _server;
+        internal static Certify.API.Public.Client _clientWithAuthorizedAccess;
+        internal static HttpClient _httpClientWithAuthorizedAccess;
+
+        internal static TestServer _apiServer;
 
         internal static System.Text.Json.JsonSerializerOptions _defaultJsonSerializerOptions = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 
@@ -28,58 +29,79 @@ namespace Certify.Service.Api.Tests
         internal string _refreshToken;
 
         [AssemblyInitialize]
-        public static void Init(TestContext context)
+        public static void AssemblyInit(TestContext context)
         {
+            // setup public API service and backend service
 
-            // setup public API service and backend service worker API
+            // tell backend service to uses specific host/ports if not already set
+            if (Environment.GetEnvironmentVariable("CERTIFY_SERVICE_HOST") == null)
+            {
+                Environment.SetEnvironmentVariable("CERTIFY_SERVICE_HOST", "127.0.0.1");
+            }
 
-            var config = new ConfigurationBuilder()
-                .SetBasePath(AppContext.BaseDirectory)
-                .AddJsonFile("appsettings.json", optional: true)
-                .AddEnvironmentVariables()
-                .Build();
+            if (Environment.GetEnvironmentVariable("CERTIFY_SERVICE_PORT") == null)
+            {
+                Environment.SetEnvironmentVariable("CERTIFY_SERVICE_PORT", "5000");
+            }
 
-            var services = new ServiceCollection()
-                .AddLogging()
-                .BuildServiceProvider();
+            // create a test server for the public API, setup authorized and unauthorized clients
 
-            var factory = services.GetService<ILoggerFactory>();
-
-            var logger = factory.CreateLogger<SystemController>();
-
-            _server = new TestServer(
+            _apiServer = new TestServer(
                 new WebHostBuilder()
                  .ConfigureAppConfiguration((context, builder) =>
                  {
-                     builder
-                     .AddJsonFile("appsettings.api.public.test.json");
+                     builder.AddJsonFile("appsettings.api.public.test.json");
+
                  })
                 .UseStartup<Server.API.Startup>()
                 );
 
-            _clientWithAnonymousAccess = _server.CreateClient();
-            _clientWithAuthorizedAccess = _server.CreateClient();
+            _httpClientWithAnonymousAccess = _apiServer.CreateClient();
+            _clientWithAnonymousAccess = new API.Public.Client(_apiServer.BaseAddress.ToString(), _httpClientWithAnonymousAccess);
 
-            Worker.Program.CreateHostBuilder(new string[] { }).Build().StartAsync();
+            _httpClientWithAuthorizedAccess = _apiServer.CreateClient();
+            _clientWithAuthorizedAccess = new API.Public.Client(_apiServer.BaseAddress.ToString(), _httpClientWithAuthorizedAccess);
+
+            CreateCoreServer();
+        }
+
+        [AssemblyCleanup]
+        public static void AssemblyCleanup()
+        {
+            _serverProcess.CloseMainWindow();
+            _serverProcess.Close();
+            _serverProcess.Dispose();
+        }
+
+        static Process? _serverProcess = null;
+        private static void CreateCoreServer()
+        {
+            if (_serverProcess == null)
+            {
+                var serverProcessInfo = new ProcessStartInfo()
+                {
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    FileName = "Certify.Server.Core.exe"
+                };
+
+                _serverProcess = Process.Start(serverProcessInfo);
+            }
         }
 
         public async Task PerformAuth()
         {
-            if (!_clientWithAuthorizedAccess.DefaultRequestHeaders.Any(h => h.Key == "Authorization"))
+            if (!_httpClientWithAuthorizedAccess.DefaultRequestHeaders.Any(h => h.Key == "Authorization"))
             {
-                var login = new { username = "test", password = "test" };
+                var login = new AuthRequest { Username = "test", Password = "test" };
 
-                var payload = new StringContent(System.Text.Json.JsonSerializer.Serialize(login), System.Text.UnicodeEncoding.UTF8, "application/json");
+                var result = await _clientWithAuthorizedAccess.LoginAsync(login);
 
-                var response = await _clientWithAuthorizedAccess.PostAsync(_apiBaseUri + "/auth/login", payload);
-                if (response.IsSuccessStatusCode)
+                if (result.AccessToken != null)
                 {
-                    var responseString = await response.Content.ReadAsStringAsync();
-                    var authResponse = System.Text.Json.JsonSerializer.Deserialize<AuthResponse>(responseString, _defaultJsonSerializerOptions);
+                    _refreshToken = result.RefreshToken;
 
-                    _refreshToken = authResponse.RefreshToken;
-
-                    _clientWithAuthorizedAccess.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", authResponse.AccessToken);
+                    _httpClientWithAuthorizedAccess.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", result.AccessToken);
                 }
             }
         }

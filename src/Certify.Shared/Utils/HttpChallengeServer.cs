@@ -9,7 +9,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Certify.Models;
 using Certify.Shared;
-using Newtonsoft.Json.Linq;
 
 namespace Certify.Core.Management.Challenges
 {
@@ -73,7 +72,7 @@ namespace Certify.Core.Management.Challenges
 
             try
             {
-                var logPath = Path.Combine(EnvironmentUtil.GetAppDataFolder(), "logs", "httpChallengeServer.log");
+                var logPath = Path.Combine(EnvironmentUtil.CreateAppDataPath(), "logs", "httpChallengeServer.log");
                 if (clearLog)
                 {
                     System.IO.File.WriteAllText(logPath, msg);
@@ -325,7 +324,15 @@ namespace Certify.Core.Management.Challenges
                 }
                 catch (Exception exp)
                 {
-                    Log($"Error in http challenge server: {exp}");
+                    if (exp.Message.Contains("thread exit"))
+                    {
+                        // this is a normal exception when stopping the server
+                    }
+                    else
+                    {
+                        Log($"Error in http challenge server: {exp}");
+                    }
+
                     Stop();
                     return;
                 }

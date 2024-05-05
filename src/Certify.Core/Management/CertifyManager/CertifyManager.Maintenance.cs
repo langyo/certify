@@ -5,8 +5,10 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Certify.Core.Management.Access;
 using Certify.Models;
 using Certify.Models.Config;
+using Certify.Models.Config.AccessControl;
 using Certify.Models.Shared;
 
 namespace Certify.Management
@@ -35,6 +37,87 @@ namespace Certify.Management
 
                 CoreAppSettings.Current.CurrentServiceVersion = systemVersion;
                 SettingsManager.SaveAppSettings();
+            }
+
+            var accessControl = await GetCurrentAccessControl();
+
+            if (await accessControl.IsInitialized() == false)
+            {
+                await BootstrapTestAdminUserAndRoles(accessControl);
+            }
+            else
+            {
+                await UpdateStandardRoles(accessControl);
+            }
+        }
+
+        private static async Task BootstrapTestAdminUserAndRoles(IAccessControl access)
+        {
+            // setup roles with policies
+            await UpdateStandardRoles(access);
+
+            var adminSp = new SecurityPrinciple
+            {
+                Id = "admin_01",
+                Description = "Primary default admin",
+                PrincipleType = SecurityPrincipleType.User,
+                Username = "admin",
+                Password = "admin",
+                Provider = StandardIdentityProviders.INTERNAL
+            };
+
+            await access.AddSecurityPrinciple(adminSp.Id, adminSp, bypassIntegrityCheck: true);
+
+            // assign security principles to roles
+            var assignedRoles = new List<AssignedRole> {
+                 // administrator
+                 new AssignedRole{
+                     Id= Guid.NewGuid().ToString(),
+                     RoleId=StandardRoles.Administrator.Id,
+                     SecurityPrincipleId=adminSp.Id
+                 }
+            };
+
+            foreach (var r in assignedRoles)
+            {
+                // add roles and policy assignments to store
+                await access.AddAssignedRole(r);
+            }
+        }
+
+        /// <summary>
+        /// Add/update standard system roles, policies and resource actions
+        /// </summary>
+        /// <param name="access"></param>
+        /// <returns></returns>
+        private static async Task UpdateStandardRoles(IAccessControl access)
+        {
+            // setup roles with policies
+
+            var actions = Policies.GetStandardResourceActions();
+
+            foreach (var action in actions)
+            {
+                await access.AddResourceAction(action);
+            }
+
+            // setup policies with actions
+
+            var policies = Policies.GetStandardPolicies();
+
+            // add policies to store
+            foreach (var r in policies)
+            {
+                _ = await access.AddResourcePolicy(null, r, bypassIntegrityCheck: true);
+            }
+
+            // setup roles with policies
+            var roles = Policies.GetStandardRoles();
+
+            foreach (var r in roles)
+            {
+                // add roles and policy assignments to store
+                await access.AddRole(r);
             }
         }
 
@@ -235,29 +318,38 @@ namespace Certify.Management
                                         }
                                     }
 
-                                    if (directoryInfo?.RenewalInfo != null)
+                                    if (directoryInfo?.RenewalInfo != null && !string.IsNullOrWhiteSpace(item.CertificateThumbprintHash))
                                     {
-                                        if (item.CertificatePath != null)
+                                        _serviceLog.Verbose($"Checking renewal info for {item.Name}");
+
+                                        if (item.ARICertificateId != null && !item.ARICertificateId.Contains("."))
                                         {
-                                            _serviceLog.Verbose($"Checking renewal info for {item.Name}");
+                                            // ARI certificate ID not current format, will need to be recomputed.
+                                            item.ARICertificateId = null;
+                                        }
 
-                                            var certId = item.CertificateId ?? Certify.Shared.Core.Utils.PKI.CertUtils.GetCertIdBase64(File.ReadAllBytes(item.CertificatePath), await GetPfxPassword(item));
-                                            var info = await provider.GetRenewalInfo(certId);
+                                        var x509Cert2 = new System.Security.Cryptography.X509Certificates.X509Certificate2(File.ReadAllBytes(item.CertificatePath), await GetPfxPassword(item));
+                                        var ariCertId = item.ARICertificateId ?? Certify.Shared.Core.Utils.PKI.CertUtils.GetARICertIdBase64(x509Cert2);
+                                        var info = await provider.GetRenewalInfo(ariCertId);
 
-                                            if (info != null && item.DateExpiry != null)
+                                        var nextRenewal = ManagedCertificate.CalculateNextRenewalAttempt(item, CoreAppSettings.Current.RenewalIntervalDays, CoreAppSettings.Current.RenewalIntervalMode ?? RenewalIntervalModes.DaysAfterLastRenewal);
+
+                                        if (info != null && nextRenewal?.DateNextRenewalAttempt != null)
+                                        {
+                                            // if planned next renewal is beyond the suggested window, set new scheduled renewal date. This allows the user to prefer their own earlier renewal but lets the CA suggest that an even earlier renewal is required (e.g. revocation)
+                                            // in the future would could add a pref for the user to "Let the CA decide when best to renew" in order to more strictly keep the renewal within the "suggested" window.
+                                            if (nextRenewal.DateNextRenewalAttempt > info.SuggestedWindow?.Start || nextRenewal?.DateNextRenewalAttempt > info.SuggestedWindow?.End)
                                             {
-                                                var nextRenewal = item.DateExpiry.Value;
+                                                var dateSpan = info.SuggestedWindow.End - info.SuggestedWindow.Start;
+                                                var randomMinsInSlot = new Random().Next((int)dateSpan.Value.TotalMinutes);
 
-                                                if (info.SuggestedWindow?.Start < nextRenewal)
+                                                var scheduledRenewalDate = info.SuggestedWindow?.Start.Value.AddMinutes(randomMinsInSlot) ?? nextRenewal.DateNextRenewalAttempt;
+
+                                                if (scheduledRenewalDate.HasValue)
                                                 {
-                                                    var dateSpan = info.SuggestedWindow.End - info.SuggestedWindow.Start;
-                                                    var randomMinsInSlot = new Random().Next((int)dateSpan.Value.TotalMinutes);
-
-                                                    var scheduledRenewalDate = info.SuggestedWindow?.Start.Value.AddMinutes(randomMinsInSlot) ?? nextRenewal;
-
                                                     _serviceLog.Information($"Random renewal date {scheduledRenewalDate} within ARI renewal window [{info.SuggestedWindow?.Start} to {info.SuggestedWindow?.End}] has been set for {item.Name} ");
 
-                                                    itemsViaARI.Add(item.Id, scheduledRenewalDate.LocalDateTime);
+                                                    itemsViaARI.Add(item.Id, scheduledRenewalDate.Value);
 
                                                     if (scheduledRenewalDate < DateTimeOffset.Now)
                                                     {
@@ -265,15 +357,14 @@ namespace Certify.Management
                                                         if (!itemsWhichRequireRenewal.Contains(item.Id))
                                                         {
                                                             itemsWhichRequireRenewal.Add(item.Id);
-
                                                         }
                                                     }
                                                 }
                                             }
-                                            else
-                                            {
-                                                _serviceLog.Verbose($"Renewal info unavailable or not supported for {item.Name}");
-                                            }
+                                        }
+                                        else
+                                        {
+                                            _serviceLog.Verbose($"Renewal info unavailable or not supported for {item.Name}");
                                         }
                                     }
                                 }
@@ -316,7 +407,7 @@ namespace Certify.Management
                             item.DateNextScheduledRenewalAttempt = itemsViaARI[item.Id];
                         }
 
-                        // if item requires renewal, schedule next renewal attempt.
+                        // if item requires immediate renewal, schedule next renewal attempt now.
                         if (itemsWhichRequireRenewal.Contains(item.Id) && item.IncludeInAutoRenew)
                         {
                             if (item.DateExpiry > DateTimeOffset.UtcNow.AddHours(1))
@@ -564,14 +655,14 @@ namespace Certify.Management
                     {
 
                         // cleanup old pfx files in asset store(s), if any
-                        var assetPath = Path.Combine(EnvironmentUtil.GetAppDataFolder(), "certes", "assets");
+                        var assetPath = Path.Combine(EnvironmentUtil.CreateAppDataPath(), "certes", "assets");
                         if (Directory.Exists(assetPath))
                         {
                             var ext = new List<string> { ".pfx" };
                             DeleteOldCertificateFiles(assetPath, ext);
                         }
 
-                        assetPath = Path.Combine(EnvironmentUtil.GetAppDataFolder(), "assets");
+                        assetPath = Path.Combine(EnvironmentUtil.CreateAppDataPath(), "assets");
                         if (Directory.Exists(assetPath))
                         {
                             var ext = new List<string> { ".pfx", ".key", ".crt", ".pem" };

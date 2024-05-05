@@ -11,7 +11,7 @@ namespace Certify.Server.Api.Public.Controllers
     /// </summary>
     [ApiController]
     [Route("internal/v1/[controller]")]
-    public class PreviewController : ControllerBase
+    public partial class PreviewController : ApiControllerBase
     {
 
         private readonly ILogger<PreviewController> _logger;

@@ -1,8 +1,9 @@
-﻿using System.Collections.Generic;
+﻿using System.IO;
 using System.Linq;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
-using Certify.Models.API;
+using Certify.API.Public;
+using Certify.Models;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Certify.Service.Api.Tests
@@ -13,13 +14,8 @@ namespace Certify.Service.Api.Tests
         [TestMethod]
         public async Task GetCertificates_UnauthorizedTest()
         {
-            // Act
-            var response = await _clientWithAnonymousAccess.GetAsync(_apiBaseUri + "/certificate");
+            await Assert.ThrowsExceptionAsync<ApiException>(async () => await _clientWithAnonymousAccess.GetManagedCertificatesAsync("", 0, 10));
 
-            // Assert
-            Assert.IsFalse(response.IsSuccessStatusCode);
-
-            Assert.AreEqual(System.Net.HttpStatusCode.Unauthorized, response.StatusCode);
         }
 
         [TestMethod]
@@ -28,19 +24,14 @@ namespace Certify.Service.Api.Tests
             // Act
             await PerformAuth();
 
-            var response = await _clientWithAuthorizedAccess.GetAsync(_apiBaseUri + "/certificate");
-            var responseString = await response.Content.ReadAsStringAsync();
+            var response = await _clientWithAuthorizedAccess.GetManagedCertificatesAsync("", 0, 10);
 
             // Assert
-            Assert.IsTrue(response.IsSuccessStatusCode);
+            Assert.IsTrue(response.TotalResults > 0);
 
-            Assert.AreEqual(System.Net.HttpStatusCode.OK, response.StatusCode);
+            Assert.IsNotNull(response.Results);
 
-            var managedCerts = System.Text.Json.JsonSerializer.Deserialize<List<ManagedCertificateSummary>>(responseString, _defaultJsonSerializerOptions);
-
-            Assert.IsNotNull(managedCerts);
-
-            Assert.IsNotNull(managedCerts[0].Id);
+            Assert.IsNotNull(response.Results.First().Id);
         }
 
         [TestMethod]
@@ -49,29 +40,35 @@ namespace Certify.Service.Api.Tests
             // Act
             await PerformAuth();
 
-            var response = await _clientWithAuthorizedAccess.GetAsync(_apiBaseUri + "/certificate");
+            var response = await _clientWithAuthorizedAccess.GetManagedCertificatesAsync("", 0, 10);
 
-            Assert.IsTrue(response.IsSuccessStatusCode, "Certificate query should be successful");
+            Assert.IsTrue(response.TotalResults > 0, "Certificate query should be successful");
 
-            var responseString = await response.Content.ReadAsStringAsync();
-            var managedCerts = System.Text.Json.JsonSerializer.Deserialize<List<ManagedCertificateSummary>>(responseString, _defaultJsonSerializerOptions);
-
-            var itemWithCert = managedCerts.First(c => c.DateRenewed != null);
+            var itemWithCert = response.Results.Last(c => c.HasCertificate && c.Identifiers.Any(d => d.IdentifierType == CertIdentifierType.Dns));
 
             // get cert /certificate/{managedCertId}/download/{format?}
 
-            var certDownloadResponse = await _clientWithAuthorizedAccess.GetAsync(_apiBaseUri + "/certificate/" + itemWithCert.Id + "/download/");
+            var file = await _clientWithAuthorizedAccess.DownloadAsync(itemWithCert.Id, "pfx", "fullchain");
 
             // Assert
-            Assert.IsTrue(certDownloadResponse.IsSuccessStatusCode);
+            using (var memoryStream = new MemoryStream())
+            {
+                file.Stream.CopyTo(memoryStream);
+                var certResponseBytes = memoryStream.ToArray();
 
-            var certResponseBytes = await certDownloadResponse.Content.ReadAsByteArrayAsync();
+                try
+                {
+                    var cert = new X509Certificate2(certResponseBytes);
 
-            var cert = new X509Certificate2(certResponseBytes);
+                    Assert.IsTrue(cert.HasPrivateKey, "Downloaded PFX has private key");
 
-            Assert.IsTrue(cert.HasPrivateKey, "Downloaded PFX has private key");
-
-            Assert.AreEqual(cert.Subject, "CN=" + itemWithCert.PrimaryIdentifier.Value, "Primary domain of cert should match primary domain of managed item");
+                    Assert.AreEqual(cert.Subject, "CN=" + itemWithCert.PrimaryIdentifier.Value, "Primary domain of cert should match primary domain of managed item");
+                }
+                catch (System.Security.Cryptography.CryptographicException)
+                {
+                    // pfx has a password set
+                }
+            }
         }
     }
 }

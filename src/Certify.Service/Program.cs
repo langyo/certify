@@ -57,7 +57,7 @@ namespace Certify.Service
             // log event/exception
             try
             {
-                var logPath = System.IO.Path.Combine(EnvironmentUtil.GetAppDataFolder("logs"), "service.exceptions.log");
+                var logPath = System.IO.Path.Combine(EnvironmentUtil.CreateAppDataPath("logs"), "service.exceptions.log");
                 if (msg != null)
                 {
                     System.IO.File.AppendAllText(logPath, "\r\n[" + DateTime.Now + "] :: " + msg);
@@ -87,8 +87,6 @@ namespace Certify.Service
                     }
                 }
 
-                var client = new HttpClient();
-
                 var appVersion = Management.Util.GetAppVersion();
 
                 var jsonRequest = Newtonsoft.Json.JsonConvert.SerializeObject(
@@ -113,7 +111,10 @@ namespace Certify.Service
                 {
                     Task.Run(async () =>
                     {
-                        await client.PostAsync(Models.API.Config.APIBaseURI + "feedback/submit", data);
+                        using (var client = new HttpClient())
+                        {
+                            await client.PostAsync(Models.API.Config.APIBaseURI + "feedback/submit", data);
+                        }
                     });
                 }
                 catch (Exception exp)

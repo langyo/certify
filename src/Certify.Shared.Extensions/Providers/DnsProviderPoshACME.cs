@@ -39,6 +39,7 @@ namespace Certify.Core.Management.Challenges.DNS
             [Google Cloud](https://poshac.me/docs/v4/Plugins/GCloud),
             [Google Domains](https://poshac.me/docs/v4/Plugins/GoogleDomains),
             [Hetzner](https://poshac.me/docs/v4/Plugins/Hetzner),
+            [HostingDe](https://poshac.me/docs/v4/Plugins/HostingDe),
             [Hurricane Electric](https://poshac.me/docs/v4/Plugins/HurricaneElectric),
             [Infoblox](https://poshac.me/docs/v4/Plugins/Infoblox),
             [Infomaniak](https://poshac.me/docs/v4/Plugins/Infomaniak)
@@ -53,6 +54,7 @@ namespace Certify.Core.Management.Challenges.DNS
             [Namecheap](https://poshac.me/docs/v4/Plugins/Namecheap)
             [NS1](https://poshac.me/docs/v4/Plugins/NS1),
             [PointDNS](https://poshac.me/docs/v4/Plugins/PointDNS),
+            [PowerDNS](https://poshac.me/docs/v4/Plugins/PowerDNS),
             [Rackspace](https://poshac.me/docs/v4/Plugins/Rackspace),
             [RFC2136](https://poshac.me/docs/v4/Plugins/RFC2136),
             [Selectel](https://poshac.me/docs/v4/Plugins/Selectel),
@@ -62,6 +64,12 @@ namespace Certify.Core.Management.Challenges.DNS
             [Yandex](https://poshac.me/docs/v4/Plugins/Yandex),
             [Zilore](https://poshac.me/docs/v4/Plugins/Zilore)
             [Zonomi](https://poshac.me/docs/v4/Plugins/Zonomi)
+
+            Adding a new provider:
+            - update the list above
+            - add a new ChallengeProviderDefinition to the ExtendedProviders list
+            - check that the expected parameters are defined in the provider definition 
+            - check that the _paramIsSecureStringConfig config is included for secure string params (legacy entries might use alt config)
         */
 
         public class PoshACMEDnsProviderProvider : IDnsProviderProviderPlugin
@@ -617,6 +625,24 @@ namespace Certify.Core.Management.Challenges.DNS
             },
             new ChallengeProviderDefinition
             {
+                Id = "DNS01.API.PoshACME.HostingDE",
+                Title = "Hosting.de DNS API (using Posh-ACME)",
+                Description = "Validates via DNS API using credentials",
+                HelpUrl = "https://poshac.me/docs/v4/Plugins/HostingDE/",
+                PropagationDelaySeconds = DefaultPropagationDelay,
+                ProviderParameters = new List<ProviderParameter>
+                {
+                    new ProviderParameter { Key = "HDEToken", Name = "API Token", IsRequired = true, IsCredential = true, ExtendedConfig= _paramIsSecureStringConfig },
+                    _defaultPropagationDelayParam
+                },
+                ChallengeType = Models.SupportedChallengeTypes.CHALLENGE_TYPE_DNS,
+                Config = "Provider=Certify.Providers.DNS.PoshACME;Script=HostingDe",
+                HandlerType = ChallengeHandlerType.POWERSHELL,
+                IsTestModeSupported = true,
+                IsExperimental = true
+            },
+            new ChallengeProviderDefinition
+            {
                 Id = "DNS01.API.PoshACME.HurricaneElectric",
                 Title = "Hurricane Electric DNS API (using Posh-ACME)",
                 Description = "Validates via DNS API using credentials",
@@ -891,6 +917,25 @@ namespace Certify.Core.Management.Challenges.DNS
             },
             new ChallengeProviderDefinition
             {
+                Id = "DNS01.API.PoshACME.PowerDNS",
+                Title = "PowerDNS API (using Posh-ACME)",
+                Description = "Validates via DNS API using credentials",
+                HelpUrl = "https://poshac.me/docs/v4/Plugins/PowerDNS/",
+                PropagationDelaySeconds = DefaultPropagationDelay,
+                ProviderParameters = new List<ProviderParameter>
+                {
+                    new ProviderParameter { Key = "PowerDNSApiHost", Name = "API Host", IsRequired = true, IsCredential = false, Description="e.g. pdns.example.com" },
+                    new ProviderParameter { Key = "PowerDNSApiKey", Name = "API Key", IsRequired = true, IsCredential = true, ExtendedConfig = _paramIsSecureStringConfig },
+                    _defaultPropagationDelayParam
+                },
+                ChallengeType = Models.SupportedChallengeTypes.CHALLENGE_TYPE_DNS,
+                Config = "Provider=Certify.Providers.DNS.PoshACME;Script=PowerDNS",
+                HandlerType = ChallengeHandlerType.POWERSHELL,
+                IsTestModeSupported = true,
+                IsExperimental = true
+            },
+            new ChallengeProviderDefinition
+            {
                 Id = "DNS01.API.PoshACME.Rackspace",
                 Title = "Rackspace Cloud DNS API (using Posh-ACME)",
                 Description = "Validates via DNS API using credentials",
@@ -955,7 +1000,7 @@ namespace Certify.Core.Management.Challenges.DNS
                 Id = "DNS01.API.PoshACME.Simply",
                 Title = "Simply.com DNS API (using Posh-ACME)",
                 Description = "Validates via DNS API using credentials",
-                HelpUrl = "https://poshac.me/docs/v4/Plugins/Simply/",
+                HelpUrl = "https://poshac.me/docs/v4/Plugins/SimplyCom/",
                 PropagationDelaySeconds = DefaultPropagationDelay,
                 ProviderParameters = new List<ProviderParameter>
                 {
@@ -964,7 +1009,7 @@ namespace Certify.Core.Management.Challenges.DNS
                     _defaultPropagationDelayParam
                 },
                 ChallengeType = Models.SupportedChallengeTypes.CHALLENGE_TYPE_DNS,
-                Config = "Provider=Certify.Providers.DNS.PoshACME;Script=Simply",
+                Config = "Provider=Certify.Providers.DNS.PoshACME;Script=SimplyCom",
                 HandlerType = ChallengeHandlerType.POWERSHELL,
                 IsTestModeSupported = true,
                 IsExperimental = true

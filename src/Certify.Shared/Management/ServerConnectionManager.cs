@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Certify.Models;
 using Certify.Models.Providers;
 using Newtonsoft.Json;
 
@@ -9,32 +10,9 @@ namespace Certify.Shared.Core.Management
 {
     public class ServerConnectionManager
     {
-        public static string GetAppDataFolder(string subFolder = null)
-        {
-            var parts = new List<string>()
-            {
-                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-                Models.SharedConstants.APPDATASUBFOLDER
-            };
-
-            if (subFolder != null)
-            {
-                parts.Add(subFolder);
-            }
-
-            var path = Path.Combine(parts.ToArray());
-
-            if (!Directory.Exists(path))
-            {
-                Directory.CreateDirectory(path);
-            }
-
-            return path;
-        }
-
         private static string GetConfigPath()
         {
-            var appDataPath = GetAppDataFolder();
+            var appDataPath = EnvironmentUtil.CreateAppDataPath();
             var connectionConfigFile = Path.Combine(appDataPath, "servers.json");
             return connectionConfigFile;
         }
@@ -95,6 +73,12 @@ namespace Certify.Shared.Core.Management
                 // failed to save
                 log?.Error($"Failed to save server connection configuration [{connectionConfigFile}] :: {exp}");
             }
+        }
+
+        public static bool ConfigExists()
+        {
+            var connectionConfigFile = GetConfigPath();
+            return File.Exists(connectionConfigFile);
         }
     }
 }

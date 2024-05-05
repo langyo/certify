@@ -240,7 +240,7 @@ namespace Certify.UI.Windows
             var licensingManager = _appViewModel.PluginManager.LicensingManager;
             if (licensingManager != null)
             {
-                if (licensingManager.IsInstallRegistered(ViewModel.AppViewModel.ProductTypeId, EnvironmentUtil.GetAppDataFolder()))
+                if (licensingManager.IsInstallRegistered(ViewModel.AppViewModel.ProductTypeId, EnvironmentUtil.CreateAppDataPath()))
                 {
                     _appViewModel.IsRegisteredVersion = true;
                 }
@@ -405,10 +405,11 @@ namespace Certify.UI.Windows
             if (_appViewModel.Preferences.EnableAppTelematics)
             {
                 tc = new TelemetryManager(Certify.Locales.ConfigResources.AIInstrumentationKey);
-                tc.TrackEvent("Start");
+                tc?.TrackEvent("Start");
             }
             else
             {
+                tc?.Dispose();
                 tc = null;
             }
         }
