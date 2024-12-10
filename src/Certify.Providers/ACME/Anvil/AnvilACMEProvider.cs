@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
@@ -1667,7 +1667,18 @@ namespace Certify.Providers.ACME.Anvil
             };
         }
 
-        private string GetIdentifierAsPath(string identifier) => identifier?.Replace("*", "_") ?? "";
+        private string GetIdentifierAsPath(string identifier)
+        {
+            var path = identifier?.Replace("*", "_") ?? "";
+
+            if (path.StartsWith("con."))
+            {
+                // on some versions of windows creating a path with a con. prefix fails.
+                path = path.Replace("con.", "_con.");
+            }
+
+            return path;
+        }
 
         private string GetPrimaryIdentifierAsPath(CertRequestConfig config, string internalId) => GetIdentifierAsPath(string.IsNullOrEmpty(config.PrimaryDomain) ? internalId : config.PrimaryDomain);
 
