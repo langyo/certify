@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
@@ -666,6 +666,11 @@ namespace Certify.Providers.ACME.Anvil
                         abandonRequest = false;
                         itemLog.Warning($"Encountered an order conflict. Action maybe re-attempted by resolving the conflict.");
                     }
+                    else if (err.Status == System.Net.HttpStatusCode.Unauthorized)
+                    {
+                        abandonRequest = false;
+                        itemLog.Warning($"Order 'Unauthorized' problem. Order will be reattempted if applicable : {err.Detail}");
+                    }
                     else if (err.Type?.EndsWith("accountDoesNotExist") == true)
                     {
                         // wrong account details, probably used staging for prod or vice versa
@@ -812,11 +817,11 @@ namespace Certify.Providers.ACME.Anvil
                                 string ariReplacesCertId = null;
 
                                 if (
-                                    caSupportsARI &&
-                                    managedCertificate.CertificateCurrentCA == managedCertificate.LastAttemptedCA
+                                    caSupportsARI
+                                    && managedCertificate.CertificateCurrentCA == managedCertificate.LastAttemptedCA
                                     && !string.IsNullOrWhiteSpace(managedCertificate.ARICertificateId)
                                     && managedCertificate.ARICertificateId.Contains(".")
-                                    && managedCertificate.RenewalFailureCount < 3
+                                    && managedCertificate.RenewalFailureCount == 0
                                     && !skipAriReplace
                                 )
                                 {
